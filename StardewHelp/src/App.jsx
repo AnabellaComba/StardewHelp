@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import DaySelector from './components/DaySelector';
 import TimeSlider from './components/TimeSlider';
 import DateTimePanel from './components/DateTimePanel';
@@ -9,7 +9,9 @@ import NPCTab from './components/NPCTab';
 import ForagingTab from './components/ForagingTab';
 import SearchResults from './components/SearchResults';
 import AnimalsTab from './components/AnimalsTab';
-import { toAbsoluteDay } from './data/animals';
+import { ANIMAL_TYPES, toAbsoluteDay } from './data/animals';
+import { getCropsForDay } from './data/crops';
+import { getBirthdays } from './data/npcs';
 import './App.css';
 
 const TABS = [
@@ -35,63 +37,196 @@ const SEASON_EMOJIS = {
 };
 
 const SEASONS_ORDER = ['primavera', 'verano', 'otoño', 'invierno'];
+const FESTIVAL_BY_DATE = {
+  'primavera-13': 'Festival del Huevo (9:00 - 14:00)',
+  'primavera-24': 'Danza de las Flores (9:00 - 14:00)',
+  'verano-11': 'Luau (9:00 - 14:00)',
+  'verano-28': 'Danza de las Medusas Lunares (22:00 - 00:00)',
+  'otoño-16': 'Feria de Stardew Valley (9:00 - 15:00)',
+  'otoño-27': 'Víspera de los Espíritus (22:00 - 00:00)',
+  'invierno-8': 'Festival del Hielo (9:00 - 14:00)',
+  'invierno-25': 'Fiesta de la Estrella Invernal (9:00 - 14:00)',
+};
 
-function App() {
-  const [season, setSeason] = useState('primavera');
-  const [day, setDay] = useState(1);
-  const [activeTab, setActiveTab] = useState('crops');
-  const [weather, setWeather] = useState('sol');
-  const [checkedItems, setCheckedItems] = useState({});
-  const [currentHour, setCurrentHour] = useState(8);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [animalTracking, setAnimalTracking] = useState({
-    cow: { entries: [], friendshipActions: 0, awardedActions: {} },
-    chicken: { entries: [] },
+const STORAGE_KEY = 'stardewhelper-state-v2';
+const DEFAULT_ANIMAL_TRACKING = {
+  cow: { entries: [], friendshipActions: 0, awardedActions: {} },
+  chicken: { entries: [] },
+};
+
+function readStoredState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function getCowFriendshipActions(animalTracking, checkedItemsByDay) {
+  const cowEntries = (animalTracking?.cow?.entries || []);
+  if (cowEntries.length === 0) return 0;
+
+  let actions = 0;
+  const sortedDayKeys = Object.keys(checkedItemsByDay || {})
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  sortedDayKeys.forEach(dayNumber => {
+    const dayChecks = checkedItemsByDay[String(dayNumber)] || {};
+    let dayActions = 0;
+
+    cowEntries.forEach(entry => {
+      const entryId = entry.id;
+      const isMature = dayNumber >= ((entry.acquiredDay || 1) + 5);
+      if (!isMature) return;
+
+      if (dayChecks[`feed-cow-${entryId}`]) dayActions += 1;
+      if (dayChecks[`pet-cow-${entryId}`]) dayActions += 1;
+    });
+
+    // Compatibilidad con datos viejos (cuando solo existía un check global por vaca)
+    if (dayActions === 0 && cowEntries.length === 1) {
+      const onlyCow = cowEntries[0];
+      const isMature = dayNumber >= ((onlyCow.acquiredDay || 1) + 5);
+      if (isMature) {
+        if (dayChecks['feed-cow']) dayActions += 1;
+        if (dayChecks['pet-cow']) dayActions += 1;
+      }
+    }
+
+    actions += dayActions;
   });
 
-  const colors = SEASON_COLORS[season];
-  const currentAbsoluteDay = toAbsoluteDay(season, day);
+  return actions;
+}
 
-  // Resetear checklist al cambiar día o estación
-  useEffect(() => {
-    setCheckedItems({});
-  }, [day, season]);
+function getDailyTickerMessages({
+  season,
+  day,
+  year,
+  currentAbsoluteDay,
+  checkedItems,
+  animalTracking,
+}) {
+  const messages = [];
+
+  const festival = FESTIVAL_BY_DATE[`${season}-${day}`];
+  if (festival) {
+    messages.push(`🎪 Hoy: ${festival}.`);
+  }
+
+  const birthdays = getBirthdays(season, day);
+  if (birthdays.length > 0) {
+    messages.push(`🎂 Cumpleaños de hoy: ${birthdays.map(npc => npc.name).join(', ')}.`);
+  }
+
+  const plantableToday = getCropsForDay(season, day)
+    .filter(crop => !crop.yearRequirement || year >= crop.yearRequirement);
+  if (plantableToday.length > 0) {
+    const sample = plantableToday.slice(0, 3).map(crop => crop.name).join(', ');
+    messages.push(`🌱 Plantaciones recomendadas hoy (${plantableToday.length}): ${sample}${plantableToday.length > 3 ? '…' : ''}.`);
+  }
+
+  ANIMAL_TYPES.forEach(animal => {
+    const entries = animalTracking?.[animal.id]?.entries || [];
+    if (entries.length === 0) return;
+
+    const careByEntry = entries.map(entry => {
+      const feedId = `feed-${animal.id}-${entry.id}`;
+      const petId = `pet-${animal.id}-${entry.id}`;
+      const isReady = currentAbsoluteDay >= ((entry.acquiredDay || 1) + animal.maturityNights);
+      const isFed = !!checkedItems[feedId] || (entries.length === 1 && !!checkedItems[`feed-${animal.id}`]);
+      const isPet = !!checkedItems[petId] || (entries.length === 1 && !!checkedItems[`pet-${animal.id}`]);
+      return { isReady, isFed, isPet };
+    });
+
+    const pendingFeed = careByEntry.filter(item => !item.isFed).length;
+    const pendingPet = careByEntry.filter(item => !item.isPet).length;
+    const readyFed = careByEntry.filter(item => item.isReady && item.isFed).length;
+
+    if (pendingFeed > 0) {
+      messages.push(`🌾 ${animal.name}: faltan alimentar ${pendingFeed} de ${entries.length}.`);
+    }
+
+    if (pendingPet > 0) {
+      messages.push(`🤲 ${animal.name}: faltan caricias en ${pendingPet} de ${entries.length}.`);
+    }
+
+    if (readyFed > 0 && !checkedItems[`collect-${animal.id}`]) {
+      messages.push(`${animal.productEmoji} Recolección pendiente de ${animal.productName.toLowerCase()}: ${readyFed}.`);
+    }
+  });
+
+  if (messages.length === 0) {
+    messages.push('✅ Todo al día por ahora. Revisa clima y hora para optimizar pesca, cultivos y rutinas.');
+  }
+
+  return messages;
+}
+
+function App() {
+  const persistedState = useMemo(() => readStoredState(), []);
+
+  const [season, setSeason] = useState(persistedState?.season || 'primavera');
+  const [day, setDay] = useState(persistedState?.day || 1);
+  const [year, setYear] = useState(Math.max(1, Number(persistedState?.year) || 1));
+  const [activeTab, setActiveTab] = useState(persistedState?.activeTab || 'crops');
+  const [weather, setWeather] = useState(persistedState?.weather || 'sol');
+  const [checkedItemsByDay, setCheckedItemsByDay] = useState(persistedState?.checkedItemsByDay || {});
+  const [currentHour, setCurrentHour] = useState(persistedState?.currentHour || 8);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [animalTracking, setAnimalTracking] = useState(persistedState?.animalTracking || DEFAULT_ANIMAL_TRACKING);
+
+  const colors = SEASON_COLORS[season];
+  const currentAbsoluteDay = ((year - 1) * 112) + toAbsoluteDay(season, day);
+  const currentDayKey = String(currentAbsoluteDay);
+  const checkedItems = checkedItemsByDay[currentDayKey] || {};
+  const cowFriendshipActions = useMemo(
+    () => getCowFriendshipActions(animalTracking, checkedItemsByDay),
+    [animalTracking, checkedItemsByDay]
+  );
+  const dailyTickerMessages = useMemo(
+    () => getDailyTickerMessages({
+      season,
+      day,
+      year,
+      currentAbsoluteDay,
+      checkedItems,
+      animalTracking,
+    }),
+    [season, day, year, currentAbsoluteDay, checkedItems, animalTracking]
+  );
 
   // Refleja la estación activa en <body> para cambiar el fondo global por CSS.
   useEffect(() => {
     document.body.setAttribute('data-season', season);
   }, [season]);
 
+  useEffect(() => {
+    const payload = {
+      season,
+      day,
+      year,
+      weather,
+      currentHour,
+      activeTab,
+      checkedItemsByDay,
+      animalTracking,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [season, day, year, weather, currentHour, activeTab, checkedItemsByDay, animalTracking]);
+
   const handleCheck = (id) => {
-    let nextValue = false;
-
-    setCheckedItems(prev => {
-      nextValue = !prev[id];
-      return { ...prev, [id]: nextValue };
-    });
-
-    const careMatch = id.match(/^(feed|pet)-(.+)$/);
-    if (!careMatch || !nextValue) return;
-
-    const actionType = careMatch[1];
-    const animalId = careMatch[2];
-
-    setAnimalTracking(prev => {
-      const current = prev[animalId];
-      if (!current || animalId !== 'cow') return prev;
-
-      const actionKey = `${currentAbsoluteDay}-${actionType}`;
-      if (current.awardedActions?.[actionKey]) return prev;
-
+    setCheckedItemsByDay(prev => {
+      const today = prev[currentDayKey] || {};
       return {
         ...prev,
-        [animalId]: {
-          ...current,
-          friendshipActions: (current.friendshipActions || 0) + 1,
-          awardedActions: {
-            ...(current.awardedActions || {}),
-            [actionKey]: true,
-          },
+        [currentDayKey]: {
+          ...today,
+          [id]: !today[id],
         },
       };
     });
@@ -100,6 +235,10 @@ function App() {
   const handleSeasonChange = (newSeason) => {
     setSeason(newSeason);
     setDay(1);
+  };
+
+  const handleYearChange = (newYear) => {
+    setYear(Math.max(1, Number(newYear) || 1));
   };
 
   const handleAnimalCountChange = (animalId, delta) => {
@@ -111,6 +250,8 @@ function App() {
         const newEntry = {
           id: `${animalId}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
           acquiredDay: currentAbsoluteDay,
+          purchaseState: 'Comprada',
+          ...(animalId === 'cow' ? { name: '' } : {}),
         };
 
         return {
@@ -148,6 +289,20 @@ function App() {
     }));
   };
 
+  const handleAnimalEntryNameChange = (animalId, entryId, newName) => {
+    setAnimalTracking(prev => ({
+      ...prev,
+      [animalId]: {
+        ...(prev[animalId] || { entries: [] }),
+        entries: ((prev[animalId] && prev[animalId].entries) || []).map(entry => (
+          entry.id === entryId
+            ? { ...entry, name: newName }
+            : entry
+        )),
+      },
+    }));
+  };
+
   return (
     <div className="app" style={{
       '--season-bg': colors.bg,
@@ -165,6 +320,14 @@ function App() {
         <p className="app-subtitle">Tu guía diaria de Stardew Valley</p>
       </header>
 
+      <div className="app-ticker" role="status" aria-live="polite">
+        <div className="app-ticker-track">
+          {[...dailyTickerMessages, ...dailyTickerMessages].map((message, idx) => (
+            <span key={`${idx}-${message}`} className="app-ticker-item">{message}</span>
+          ))}
+        </div>
+      </div>
+
       {/* Day Selector - REMOVED from here, now in DateTimePanel */}
       {/* Time Slider - REMOVED from here, now in DateTimePanel */}
 
@@ -181,10 +344,12 @@ function App() {
           <DateTimePanel
             season={season}
             day={day}
+            year={year}
             weather={weather}
             currentHour={currentHour}
             onSeasonChange={handleSeasonChange}
             onDayChange={setDay}
+            onYearChange={handleYearChange}
             onWeatherChange={setWeather}
             onHourChange={setCurrentHour}
             accentColor={colors.accent}
@@ -196,6 +361,7 @@ function App() {
 
         {/* Status bar */}
         <div className="status-bar" style={{ borderColor: colors.accent, backgroundColor: colors.accent + '22' }}>
+          <span>🗓️ Año <strong>{year}</strong></span>
           <span>{SEASON_EMOJIS[season]} <strong>{season.charAt(0).toUpperCase() + season.slice(1)}</strong></span>
           <span>📅 Día <strong>{day}</strong> / 28</span>
           <span>{weather === 'sol' ? '☀️ Sol' : weather === 'lluvia' ? '🌧️ Lluvia' : '⛅ Nublado'}</span>
@@ -266,8 +432,10 @@ function App() {
               checkedItems={checkedItems}
               onCheck={handleCheck}
               animalTracking={animalTracking}
+              cowFriendshipActions={cowFriendshipActions}
               onAnimalCountChange={handleAnimalCountChange}
               onAnimalEntryDayChange={handleAnimalEntryDayChange}
+              onAnimalEntryNameChange={handleAnimalEntryNameChange}
               accentColor={colors.accent}
             />
           )}
