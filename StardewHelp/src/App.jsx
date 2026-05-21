@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import DaySelector from './components/DaySelector';
 import TimeSlider from './components/TimeSlider';
+import DateTimePanel from './components/DateTimePanel';
+import SidebarDecor from './components/SidebarDecor';
 import CropsTab from './components/CropsTab';
 import FishTab from './components/FishTab';
 import NPCTab from './components/NPCTab';
 import ForagingTab from './components/ForagingTab';
 import SearchResults from './components/SearchResults';
+import AnimalsTab from './components/AnimalsTab';
+import { toAbsoluteDay } from './data/animals';
 import './App.css';
 
 const TABS = [
@@ -13,6 +17,7 @@ const TABS = [
   { id: 'fish', label: '🎣 Pesca' },
   { id: 'npcs', label: '🎂 NPCs' },
   { id: 'foraging', label: '🍄 Forrajeo' },
+  { id: 'animals', label: '🐾 Animales' },
 ];
 
 const SEASON_COLORS = {
@@ -39,21 +44,108 @@ function App() {
   const [checkedItems, setCheckedItems] = useState({});
   const [currentHour, setCurrentHour] = useState(8);
   const [searchQuery, setSearchQuery] = useState('');
+  const [animalTracking, setAnimalTracking] = useState({
+    cow: { entries: [], friendshipActions: 0, awardedActions: {} },
+    chicken: { entries: [] },
+  });
 
   const colors = SEASON_COLORS[season];
+  const currentAbsoluteDay = toAbsoluteDay(season, day);
 
   // Resetear checklist al cambiar día o estación
   useEffect(() => {
     setCheckedItems({});
   }, [day, season]);
 
+  // Refleja la estación activa en <body> para cambiar el fondo global por CSS.
+  useEffect(() => {
+    document.body.setAttribute('data-season', season);
+  }, [season]);
+
   const handleCheck = (id) => {
-    setCheckedItems(prev => ({ ...prev, [id]: !prev[id] }));
+    let nextValue = false;
+
+    setCheckedItems(prev => {
+      nextValue = !prev[id];
+      return { ...prev, [id]: nextValue };
+    });
+
+    const careMatch = id.match(/^(feed|pet)-(.+)$/);
+    if (!careMatch || !nextValue) return;
+
+    const actionType = careMatch[1];
+    const animalId = careMatch[2];
+
+    setAnimalTracking(prev => {
+      const current = prev[animalId];
+      if (!current || animalId !== 'cow') return prev;
+
+      const actionKey = `${currentAbsoluteDay}-${actionType}`;
+      if (current.awardedActions?.[actionKey]) return prev;
+
+      return {
+        ...prev,
+        [animalId]: {
+          ...current,
+          friendshipActions: (current.friendshipActions || 0) + 1,
+          awardedActions: {
+            ...(current.awardedActions || {}),
+            [actionKey]: true,
+          },
+        },
+      };
+    });
   };
 
   const handleSeasonChange = (newSeason) => {
     setSeason(newSeason);
     setDay(1);
+  };
+
+  const handleAnimalCountChange = (animalId, delta) => {
+    setAnimalTracking(prev => {
+      const current = prev[animalId] || { entries: [] };
+      const currentEntries = current.entries || [];
+
+      if (delta > 0) {
+        const newEntry = {
+          id: `${animalId}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+          acquiredDay: currentAbsoluteDay,
+        };
+
+        return {
+          ...prev,
+          [animalId]: {
+            ...current,
+            entries: [...currentEntries, newEntry],
+          },
+        };
+      }
+
+      if (currentEntries.length === 0) return prev;
+
+      return {
+        ...prev,
+        [animalId]: {
+          ...current,
+          entries: currentEntries.slice(0, -1),
+        },
+      };
+    });
+  };
+
+  const handleAnimalEntryDayChange = (animalId, entryId, newDay) => {
+    setAnimalTracking(prev => ({
+      ...prev,
+      [animalId]: {
+        ...(prev[animalId] || { entries: [] }),
+        entries: ((prev[animalId] && prev[animalId].entries) || []).map(entry => (
+          entry.id === entryId
+            ? { ...entry, acquiredDay: newDay }
+            : entry
+        )),
+      },
+    }));
   };
 
   return (
@@ -65,32 +157,42 @@ function App() {
 
       {/* Header */}
       <header className="app-header" style={{ backgroundColor: colors.accent }}>
-        <h1 className="app-title">🌾 StardewHelper</h1>
+        <img
+          className="app-logo"
+          src="/decor/real/LogoSH.png"
+          alt="StardewHelper"
+        />
         <p className="app-subtitle">Tu guía diaria de Stardew Valley</p>
       </header>
 
-      {/* Day Selector */}
-      <DaySelector
-        season={season}
-        day={day}
-        weather={weather}
-        onSeasonChange={handleSeasonChange}
-        onDayChange={setDay}
-        onWeatherChange={setWeather}
-        seasonEmoji={SEASON_EMOJIS[season]}
-        accentColor={colors.accent}
-        seasonsOrder={SEASONS_ORDER}
-      />
+      {/* Day Selector - REMOVED from here, now in DateTimePanel */}
+      {/* Time Slider - REMOVED from here, now in DateTimePanel */}
 
-      {/* Time Slider */}
-      <TimeSlider
-        currentHour={currentHour}
-        onHourChange={setCurrentHour}
-        accentColor={colors.accent}
-      />
+      {/* Main Content with Sidebar Decorations */}
+      <main className="main-content-with-sidebars">
+        
+        {/* Left Sidebar Decoration */}
+        <SidebarDecor position="left" accentColor={colors.accent} />
 
-      {/* Main Content */}
-      <main className="main-content">
+        {/* Center Content */}
+        <div className="main-center">
+
+          {/* DateTime Panel (compact selector + slider) */}
+          <DateTimePanel
+            season={season}
+            day={day}
+            weather={weather}
+            currentHour={currentHour}
+            onSeasonChange={handleSeasonChange}
+            onDayChange={setDay}
+            onWeatherChange={setWeather}
+            onHourChange={setCurrentHour}
+            accentColor={colors.accent}
+            seasonsOrder={SEASONS_ORDER}
+          />
+
+          {/* Main Content */}
+          <div className="main-content">
 
         {/* Status bar */}
         <div className="status-bar" style={{ borderColor: colors.accent, backgroundColor: colors.accent + '22' }}>
@@ -158,9 +260,26 @@ function App() {
           {activeTab === 'foraging' && (
             <ForagingTab season={season} checkedItems={checkedItems} onCheck={handleCheck} accentColor={colors.accent} />
           )}
+          {activeTab === 'animals' && (
+            <AnimalsTab
+              currentAbsoluteDay={currentAbsoluteDay}
+              checkedItems={checkedItems}
+              onCheck={handleCheck}
+              animalTracking={animalTracking}
+              onAnimalCountChange={handleAnimalCountChange}
+              onAnimalEntryDayChange={handleAnimalEntryDayChange}
+              accentColor={colors.accent}
+            />
+          )}
         </div>
           </>
         )}
+        </div>
+        </div>
+
+        {/* Right Sidebar Decoration */}
+        <SidebarDecor position="right" accentColor={colors.accent} />
+
       </main>
 
       <footer className="app-footer">
