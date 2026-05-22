@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="Cultivos">
+  <rect width="240" height="180" rx="18" fill="#f7f4e8"/>
+  <rect y="118" width="240" height="62" fill="#8c5a34"/>
+  <rect y="132" width="240" height="48" fill="#7a4d2b"/>
+  <g fill="#5e8f2f">
+    <rect x="46" y="78" width="7" height="50" rx="3"/>
+    <rect x="88" y="68" width="7" height="60" rx="3"/>
+    <rect x="130" y="74" width="7" height="54" rx="3"/>
+    <rect x="172" y="70" width="7" height="58" rx="3"/>
+  </g>
+  <g fill="#7bbf40">
+    <ellipse cx="40" cy="82" rx="16" ry="8" transform="rotate(-30 40 82)"/>
+    <ellipse cx="58" cy="87" rx="16" ry="8" transform="rotate(30 58 87)"/>
+    <ellipse cx="82" cy="72" rx="16" ry="8" transform="rotate(-30 82 72)"/>
+    <ellipse cx="100" cy="79" rx="16" ry="8" transform="rotate(30 100 79)"/>
+    <ellipse cx="124" cy="78" rx="16" ry="8" transform="rotate(-30 124 78)"/>
+    <ellipse cx="142" cy="84" rx="16" ry="8" transform="rotate(30 142 84)"/>
+    <ellipse cx="166" cy="74" rx="16" ry="8" transform="rotate(-30 166 74)"/>
+    <ellipse cx="184" cy="80" rx="16" ry="8" transform="rotate(30 184 80)"/>
+  </g>
+  <g fill="#f39d2f">
+    <circle cx="48" cy="66" r="10"/>
+    <circle cx="92" cy="55" r="10"/>
+    <circle cx="134" cy="61" r="10"/>
+    <circle cx="176" cy="57" r="10"/>
+  </g>
+</svg>

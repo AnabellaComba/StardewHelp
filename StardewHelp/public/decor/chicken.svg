@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="Gallina">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff8e9"/>
+      <stop offset="100%" stop-color="#ffecc5"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="180" rx="18" fill="url(#bg)"/>
+  <ellipse cx="120" cy="160" rx="65" ry="11" fill="#f3dcb4"/>
+  <ellipse cx="120" cy="102" rx="56" ry="36" fill="#fffef8"/>
+  <ellipse cx="160" cy="84" rx="20" ry="19" fill="#fffef8"/>
+  <circle cx="166" cy="82" r="4" fill="#2e2e2e"/>
+  <polygon points="181,89 198,94 181,99" fill="#f2a229"/>
+  <circle cx="120" cy="58" r="7" fill="#e95d5d"/>
+  <circle cx="134" cy="60" r="7" fill="#e95d5d"/>
+  <circle cx="147" cy="64" r="7" fill="#e95d5d"/>
+  <ellipse cx="90" cy="112" rx="16" ry="11" fill="#f4e6cf"/>
+  <ellipse cx="148" cy="108" rx="13" ry="9" fill="#f4e6cf"/>
+  <rect x="98" y="130" width="9" height="22" rx="3" fill="#c98834"/>
+  <rect x="132" y="130" width="9" height="22" rx="3" fill="#c98834"/>
+</svg>

@@ -58,10 +58,28 @@ function readStoredState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function mergeAnimalTrackingDefaults(savedTracking) {
+  return {
+    ...DEFAULT_ANIMAL_TRACKING,
+    ...(savedTracking || {}),
+    cow: {
+      ...DEFAULT_ANIMAL_TRACKING.cow,
+      ...((savedTracking && savedTracking.cow) || {}),
+      entries: ((savedTracking && savedTracking.cow && savedTracking.cow.entries) || []),
+    },
+    chicken: {
+      ...DEFAULT_ANIMAL_TRACKING.chicken,
+      ...((savedTracking && savedTracking.chicken) || {}),
+      entries: ((savedTracking && savedTracking.chicken && savedTracking.chicken.entries) || []),
+    },
+  };
 }
 
 function getCowFriendshipActions(animalTracking, checkedItemsByDay) {
@@ -101,6 +119,64 @@ function getCowFriendshipActions(animalTracking, checkedItemsByDay) {
   });
 
   return actions;
+}
+
+function getFriendshipByEntry(animalId, animalType, animalTracking, checkedItemsByDay, currentAbsoluteDay) {
+  const entries = (animalTracking?.[animalId]?.entries || []);
+  if (entries.length === 0) return {};
+
+  const statsByEntry = Object.fromEntries(
+    entries.map(entry => [entry.id, { totalActions: 0, hearts: 0, todayIncrease: 0, isMatureToday: false }])
+  );
+
+  const sortedDayKeys = Object.keys(checkedItemsByDay || {})
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  sortedDayKeys.forEach(dayNumber => {
+    const dayChecks = checkedItemsByDay[String(dayNumber)] || {};
+
+    entries.forEach(entry => {
+      const entryStats = statsByEntry[entry.id];
+      if (!entryStats) return;
+
+      const isMature = dayNumber >= ((entry.acquiredDay || 1) + animalType.maturityNights);
+      if (!isMature) return;
+
+      const fed = !!dayChecks[`feed-${animalId}-${entry.id}`];
+      const pet = !!dayChecks[`pet-${animalId}-${entry.id}`];
+      entryStats.totalActions += (fed ? 1 : 0) + (pet ? 1 : 0);
+    });
+
+    // Compatibilidad con datos viejos (cuando solo existía un check global por vaca)
+    if (entries.length === 1) {
+      const onlyEntry = entries[0];
+      const onlyStats = statsByEntry[onlyEntry.id];
+      const isMature = dayNumber >= ((onlyEntry.acquiredDay || 1) + animalType.maturityNights);
+      if (isMature) {
+        if (dayChecks[`feed-${animalId}`]) onlyStats.totalActions += 1;
+        if (dayChecks[`pet-${animalId}`]) onlyStats.totalActions += 1;
+      }
+    }
+  });
+
+  const todayChecks = checkedItemsByDay[String(currentAbsoluteDay)] || {};
+  entries.forEach(entry => {
+    const entryStats = statsByEntry[entry.id];
+    if (!entryStats) return;
+
+    const isMatureToday = currentAbsoluteDay >= ((entry.acquiredDay || 1) + animalType.maturityNights);
+    const feedToday = !!todayChecks[`feed-${animalId}-${entry.id}`] || (entries.length === 1 && !!todayChecks[`feed-${animalId}`]);
+    const petToday = !!todayChecks[`pet-${animalId}-${entry.id}`] || (entries.length === 1 && !!todayChecks[`pet-${animalId}`]);
+    const todayActions = isMatureToday ? ((feedToday ? 1 : 0) + (petToday ? 1 : 0)) : 0;
+
+    entryStats.isMatureToday = isMatureToday;
+    entryStats.todayIncrease = todayActions * 0.5;
+    entryStats.hearts = Math.min(5, entryStats.totalActions * 0.5);
+  });
+
+  return statsByEntry;
 }
 
 function getDailyTickerMessages({
@@ -177,8 +253,8 @@ function App() {
   const [weather, setWeather] = useState(persistedState?.weather || 'sol');
   const [checkedItemsByDay, setCheckedItemsByDay] = useState(persistedState?.checkedItemsByDay || {});
   const [currentHour, setCurrentHour] = useState(persistedState?.currentHour || 8);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [animalTracking, setAnimalTracking] = useState(persistedState?.animalTracking || DEFAULT_ANIMAL_TRACKING);
+  const [searchQuery, setSearchQuery] = useState(persistedState?.searchQuery || '');
+  const [animalTracking, setAnimalTracking] = useState(mergeAnimalTrackingDefaults(persistedState?.animalTracking));
 
   const colors = SEASON_COLORS[season];
   const currentAbsoluteDay = ((year - 1) * 112) + toAbsoluteDay(season, day);
@@ -187,6 +263,15 @@ function App() {
   const cowFriendshipActions = useMemo(
     () => getCowFriendshipActions(animalTracking, checkedItemsByDay),
     [animalTracking, checkedItemsByDay]
+  );
+  const animalFriendshipByEntry = useMemo(
+    () => Object.fromEntries(
+      ANIMAL_TYPES.map(animal => [
+        animal.id,
+        getFriendshipByEntry(animal.id, animal, animalTracking, checkedItemsByDay, currentAbsoluteDay),
+      ])
+    ),
+    [animalTracking, checkedItemsByDay, currentAbsoluteDay]
   );
   const dailyTickerMessages = useMemo(
     () => getDailyTickerMessages({
@@ -212,12 +297,13 @@ function App() {
       year,
       weather,
       currentHour,
+      searchQuery,
       activeTab,
       checkedItemsByDay,
       animalTracking,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [season, day, year, weather, currentHour, activeTab, checkedItemsByDay, animalTracking]);
+  }, [season, day, year, weather, currentHour, searchQuery, activeTab, checkedItemsByDay, animalTracking]);
 
   const handleCheck = (id) => {
     setCheckedItemsByDay(prev => {
@@ -433,6 +519,7 @@ function App() {
               onCheck={handleCheck}
               animalTracking={animalTracking}
               cowFriendshipActions={cowFriendshipActions}
+              animalFriendshipByEntry={animalFriendshipByEntry}
               onAnimalCountChange={handleAnimalCountChange}
               onAnimalEntryDayChange={handleAnimalEntryDayChange}
               onAnimalEntryNameChange={handleAnimalEntryNameChange}

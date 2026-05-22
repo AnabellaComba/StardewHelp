@@ -9,10 +9,17 @@ function formatAbsoluteDay(absoluteDay) {
   return `Día ${day} de ${season}`;
 }
 
+function getHeartFillState(heartValue, heartIndex) {
+  if (heartValue >= heartIndex + 1) return 'full';
+  if (heartValue >= heartIndex + 0.5) return 'half';
+  return 'empty';
+}
+
 function AnimalCard({
   animal,
   state,
   cowFriendshipActions,
+  animalFriendshipByEntry,
   currentAbsoluteDay,
   collectChecked,
   checkedItems,
@@ -40,6 +47,7 @@ function AnimalCard({
       isReady,
       feedChecked: !!checkedItems[feedId],
       petChecked: !!checkedItems[petId],
+      friendship: animalFriendshipByEntry?.[animal.id]?.[entry.id],
     };
   });
   const readyEntries = entries.filter(entry => currentAbsoluteDay >= (entry.acquiredDay + animal.maturityNights));
@@ -49,9 +57,6 @@ function AnimalCard({
   const petTodayCount = entryCare.filter(care => care.petChecked).length;
   const canTrackDaily = count > 0;
   const canCollectToday = canTrackDaily && readyFedTodayCount > 0;
-  const cowHearts = animal.id === 'cow'
-    ? Math.min(5, ((cowFriendshipActions || 0) * 0.5))
-    : null;
 
   return (
     <div className="card animal-card" style={{ borderLeftColor: accentColor }}>
@@ -84,17 +89,26 @@ function AnimalCard({
             const firstProductDay = entry.acquiredDay + animal.maturityNights;
             const isReady = currentAbsoluteDay >= firstProductDay;
             const nextBirthday = entry.acquiredDay + 112;
+            const friendship = animalFriendshipByEntry?.[animal.id]?.[entry.id];
+            const entryLabel = animal.id === 'cow'
+              ? (entry.name?.trim() || `Vaca #${idx + 1}`)
+              : `${animal.name} #${idx + 1}`;
 
             return (
               <div key={entry.id} className="animal-entry-row">
-                <div className="animal-entry-title-row">
-                  <label htmlFor={`${animal.id}-entry-${entry.id}`} className="animal-config-label">
-                    {animal.name} #{idx + 1}
-                  </label>
-                  {animal.id === 'cow' && (
+                <div className="animal-entry-topline">
+                  <div className="animal-entry-title-row">
+                    <span className="animal-entry-label">{entryLabel}</span>
                     <span className="card-badge info">{entry.purchaseState || 'Comprada'}</span>
-                  )}
+                  </div>
+                  <div className="animal-entry-hearts" aria-hidden="true">
+                    {Array.from({ length: 5 }, (_, heartIdx) => {
+                      const fillState = getHeartFillState(friendship?.hearts || 0, heartIdx);
+                      return <span key={heartIdx} className={`animal-heart animal-heart-${fillState}`}>♥</span>;
+                    })}
+                  </div>
                 </div>
+
                 {animal.id === 'cow' && (
                   <input
                     type="text"
@@ -104,9 +118,27 @@ function AnimalCard({
                     placeholder={`Nombre de la vaca #${idx + 1}`}
                   />
                 )}
+
+                <div className="animal-entry-actions">
+                  <button
+                    type="button"
+                    className={`animal-care-btn${entryCare[idx].feedChecked ? ' active' : ''}`}
+                    onClick={() => onCheck(entryCare[idx].feedId)}
+                  >
+                    🌾 Alimentado
+                  </button>
+                  <button
+                    type="button"
+                    className={`animal-care-btn${entryCare[idx].petChecked ? ' active' : ''}`}
+                    onClick={() => onCheck(entryCare[idx].petId)}
+                  >
+                    🤲 Acariciado
+                  </button>
+                </div>
+
                 <select
                   id={`${animal.id}-entry-${entry.id}`}
-                  className="animal-select"
+                  className="animal-select animal-select-wide"
                   value={entry.acquiredDay}
                   onChange={(e) => onEntryDayChange(animal.id, entry.id, Number(e.target.value))}
                 >
@@ -114,13 +146,28 @@ function AnimalCard({
                     <option key={option} value={option}>{formatAbsoluteDay(option)}</option>
                   ))}
                 </select>
-                <div className="animal-entry-meta">
-                  {isReady
-                    ? `${animal.productEmoji} Produce diario si está alimentado.`
-                    : `⏳ Empieza a producir en ${formatAbsoluteDay(firstProductDay)}.`}
+
+                <div className="animal-entry-meta animal-entry-meta-compact">
+                  <span className="animal-entry-line">
+                    {isReady
+                      ? `${animal.productEmoji} Produce diario si está alimentado.`
+                      : `⏳ Empieza a producir en ${formatAbsoluteDay(firstProductDay)}.`}
+                  </span>
                   {animal.id === 'cow' && (
-                    <span>🎂 Cumpleaños anual: cada 4 estaciones (referencia: {formatAbsoluteDay(nextBirthday)}).</span>
+                    <span className="animal-entry-line">🎂 Cumpleaños anual: cada 4 estaciones (referencia: {formatAbsoluteDay(nextBirthday)}).</span>
                   )}
+                  <span className="animal-entry-line animal-entry-tone">
+                    Estado: {entryCare[idx].feedChecked ? 'alimentada' : 'sin alimentar'} · {entryCare[idx].petChecked ? 'acariciada' : 'sin acariciar'}
+                  </span>
+                </div>
+
+                <div className="animal-care-indicator">
+                  <span>
+                    Afecto hoy: +{(friendship?.todayIncrease || 0).toFixed(1)} ❤
+                  </span>
+                  <span>
+                    Total: {(friendship?.hearts || 0).toFixed(1)} / 5 ❤
+                  </span>
                 </div>
               </div>
             );
@@ -134,58 +181,18 @@ function AnimalCard({
 
       {canTrackDaily && (
         <>
-          <div className="animal-status-box" style={{ borderColor: accentColor + '55', background: accentColor + '12' }}>
-            {readyEntries.length > 0 ? (
-              <span>
-                {animal.productEmoji} Listos para producir hoy: {readyEntries.length} de {count}. Alimentados y listos hoy: {readyFedTodayCount}.
-              </span>
-            ) : (
-              <span>
-                ⏳ Aún sin producción disponible. Pendientes de madurar: {pendingEntries.length}.
-              </span>
-            )}
-          </div>
-
-          <div className="animal-care-summary">
-            🌾 Alimentados hoy: <strong>{fedTodayCount}</strong> / {count} · 🤲 Acariciados hoy: <strong>{petTodayCount}</strong> / {count}
-          </div>
-
           <div className="animal-care-grid">
-            {entryCare.map(care => {
-              const entryLabel = animal.id === 'cow'
-                ? (care.entry.name?.trim() || `Vaca #${care.idx + 1}`)
-                : `${animal.name} #${care.idx + 1}`;
-
-              return (
-                <div key={care.entry.id} className="animal-care-row">
-                  <span className="animal-care-name">{entryLabel}</span>
-                  <button
-                    type="button"
-                    className={`animal-care-btn${care.feedChecked ? ' active' : ''}`}
-                    onClick={() => onCheck(care.feedId)}
-                  >
-                    🌾 Alimentado
-                  </button>
-                  <button
-                    type="button"
-                    className={`animal-care-btn${care.petChecked ? ' active' : ''}`}
-                    onClick={() => onCheck(care.petId)}
-                  >
-                    🤲 Acariciado
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          {animal.id === 'cow' && (
-            <div className="animal-friendship" style={{ borderColor: accentColor + '55' }}>
-              <strong>💖 Amistad de vacas:</strong> {cowHearts.toFixed(1)} / 5 corazones.
-              <span>
-                Sube 0.5 por alimentar y 0.5 por acariciar cada vaca madura por día (máximo 5).
+            <div className="animal-care-row animal-care-row-summary">
+              <span className="animal-care-name">Resumen de {animal.name.toLowerCase()}</span>
+              <span className="animal-care-summary-pill">🌾 {fedTodayCount} / {count}</span>
+              <span className="animal-care-summary-pill">🤲 {petTodayCount} / {count}</span>
+              <span className="animal-care-summary-pill animal-care-summary-pill-soft">
+                {readyEntries.length > 0
+                  ? `${readyFedTodayCount} listas para recoger`
+                  : `Pendientes de madurar: ${pendingEntries.length}`}
               </span>
             </div>
-          )}
+          </div>
 
           {readyEntries.length > 0 && (
             <ChecklistItem
@@ -217,6 +224,7 @@ export default function AnimalsTab({
   onCheck,
   animalTracking,
   cowFriendshipActions,
+  animalFriendshipByEntry,
   onAnimalCountChange,
   onAnimalEntryDayChange,
   onAnimalEntryNameChange,
@@ -237,6 +245,7 @@ export default function AnimalsTab({
             animal={animal}
             state={state}
             cowFriendshipActions={cowFriendshipActions}
+            animalFriendshipByEntry={animalFriendshipByEntry}
             currentAbsoluteDay={currentAbsoluteDay}
             collectChecked={!!checkedItems[`collect-${animal.id}`]}
             checkedItems={checkedItems}

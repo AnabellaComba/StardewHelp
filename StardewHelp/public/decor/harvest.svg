@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="Cosecha">
+  <rect width="240" height="180" rx="18" fill="#eef7e6"/>
+  <rect y="126" width="240" height="54" fill="#b07a4c"/>
+  <circle cx="56" cy="64" r="14" fill="#ffd04a"/>
+  <g fill="#7fb55b">
+    <ellipse cx="84" cy="95" rx="14" ry="8" transform="rotate(-28 84 95)"/>
+    <ellipse cx="102" cy="103" rx="14" ry="8" transform="rotate(24 102 103)"/>
+    <ellipse cx="124" cy="92" rx="14" ry="8" transform="rotate(-25 124 92)"/>
+    <ellipse cx="143" cy="100" rx="14" ry="8" transform="rotate(24 143 100)"/>
+    <ellipse cx="164" cy="91" rx="14" ry="8" transform="rotate(-27 164 91)"/>
+  </g>
+  <g fill="#f2a83b">
+    <ellipse cx="93" cy="113" rx="11" ry="13"/>
+    <ellipse cx="132" cy="110" rx="11" ry="13"/>
+    <ellipse cx="160" cy="113" rx="11" ry="13"/>
+  </g>
+  <rect x="178" y="70" width="30" height="56" rx="4" fill="#d6a26f"/>
+  <line x1="186" y1="70" x2="186" y2="126" stroke="#9c6d44" stroke-width="2"/>
+  <line x1="194" y1="70" x2="194" y2="126" stroke="#9c6d44" stroke-width="2"/>
+  <line x1="202" y1="70" x2="202" y2="126" stroke="#9c6d44" stroke-width="2"/>
+</svg>

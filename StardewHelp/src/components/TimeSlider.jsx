@@ -21,17 +21,17 @@ function getTimeEmoji(h) {
 // Marcas en la barra
 const MARKS = [6, 9, 12, 15, 18, 21, 24];
 
-export default function TimeSlider({ currentHour, onHourChange, accentColor }) {
+export default function TimeSlider({ currentHour, onHourChange, accentColor, compact = false }) {
   const pct = ((currentHour - 6) / (25 - 6)) * 100;
 
   return (
-    <div className="time-slider-wrap">
+    <div className={`time-slider-wrap${compact ? ' compact' : ''}`}>
       <div className="time-slider-header">
         <span className="time-emoji">{getTimeEmoji(currentHour)}</span>
         <span className="time-value" style={{ color: accentColor }}>
           {formatHour(currentHour)}
         </span>
-        <span className="time-hint">Hora del juego</span>
+        {!compact && <span className="time-hint">Hora del juego</span>}
       </div>
 
       <div className="time-slider-track-wrap">
@@ -45,18 +45,20 @@ export default function TimeSlider({ currentHour, onHourChange, accentColor }) {
           onChange={e => onHourChange(Number(e.target.value))}
           style={{ '--thumb-color': accentColor }}
         />
-        {/* Marcas de hora */}
-        <div className="time-marks">
-          {MARKS.map(h => (
-            <span
-              key={h}
-              className="time-mark"
-              style={{ left: `${((h - 6) / 19) * 100}%` }}
-            >
-              {h < 12 ? `${h}a` : h === 12 ? '12p' : h < 24 ? `${h - 12}p` : '12a'}
-            </span>
-          ))}
-        </div>
+        {/* Marcas de hora - solo si no es compacto */}
+        {!compact && (
+          <div className="time-marks">
+            {MARKS.map(h => (
+              <span
+                key={h}
+                className="time-mark"
+                style={{ left: `${((h - 6) / 19) * 100}%` }}
+              >
+                {h < 12 ? `${h}a` : h === 12 ? '12p' : h < 24 ? `${h - 12}p` : '12a'}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Barra de progreso de color */}
